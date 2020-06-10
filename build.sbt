@@ -1,4 +1,4 @@
-name := "akka-quickstart-java"
+name := "obstruction-free-consensus"
 
 version := "1.0"
 
