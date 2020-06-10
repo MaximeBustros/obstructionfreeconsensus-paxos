@@ -25,6 +25,6 @@ public class Main {
 		final ActorSystem system = ActorSystem.create("system");
 		
 		ArrayList<ActorRef> references = createServers(system, NUMBER_OF_SERVERS);
-		System.out.println(references.size());
+		
 	}
 }

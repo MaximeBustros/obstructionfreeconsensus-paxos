@@ -2,7 +2,7 @@ package com.example;
 
 public class AbortMessage {
     
-	public AbortMsg(int ballot) {
+	public AbortMessage(int ballot) {
         this.ballot = ballot;
     }
 	

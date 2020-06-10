@@ -1,11 +1,11 @@
 package com.example;
 
-public class GatheMessage {
+public class GatherMessage {
     int ballot;
     int imposeballot;
     int estimate;
 
-    public GatherMsg(int ballot, int imposeballot, int estimate) {
+    public GatherMessage(int ballot, int imposeballot, int estimate) {
         this.ballot = ballot;
         this.imposeballot = imposeballot;
         this.estimate = estimate;
