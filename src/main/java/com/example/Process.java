@@ -7,6 +7,7 @@ import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.lang.Math;
 
 public class Process extends UntypedAbstractActor {
 	
@@ -21,6 +22,9 @@ public class Process extends UntypedAbstractActor {
     private Integer estimate;
     private long time;
     private ArrayList<ActorRef> references;
+    private int numberOfServers;
+    private int quorumSize;
+    private int numberOfGatherMessages;
     private HashMap<ActorRef, State> states; 	// State contains estimate and 
     											// estimateballot as public properties;
     
@@ -32,6 +36,7 @@ public class Process extends UntypedAbstractActor {
     	this.imposeballot = ballot;
     	this.estimate = null;
     	this.states = null;
+    	this.numberOfGatherMessages = 0;
     }
     
     // Method to create processes
@@ -50,7 +55,49 @@ public class Process extends UntypedAbstractActor {
     		propose(message);
     	} else if (message instanceof ReadMessage) {
     		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
+    		readMessage(message);
+    	} else if (message instanceof AbortMessage) {
+    		log.info("[" + self().path().name() + "] Aborts");
+    	} else if (message instanceof GatherMessage) {
+    		gather(message);
     	}
+    }
+    
+    private void gather(Object message) {
+    	GatherMessage gm = null;
+    	log.info("[" + self().path().name() + "] Gather message received from [" + getSender() + "]");
+    	try {
+    		gm = (GatherMessage) message;
+    	} catch (Exception e) {
+    		log.error("Error in parsing GatherMessage");
+    	}
+    	states.put(getSender(), new State(gm.imposeballot, gm.estimate));
+    	this.numberOfGatherMessages += 1;
+    	if (this.numberOfGatherMessages >= this.quorumSize) {
+    		// Do impose
+    		log.info("[" + self().path().name() + "] quorum reached -> impose value: " + gm.ballot);
+    		this.numberOfGatherMessages = 0;
+    	}
+    }
+    
+    private void readMessage(Object message) {
+    	Integer messageballot = null;
+    	try {
+    		// parse message
+    		ReadMessage m = (ReadMessage) message;
+    		messageballot = m.ballot;
+    	} catch (Exception e) {
+    		log.error("Parsing Error: readMessage");
+    		return;
+    	}
+    	if (this.readballot > messageballot || this.imposeballot > messageballot) {
+    		AbortMessage abort = new AbortMessage(messageballot);
+    		getSender().tell(abort, getSelf());
+    	} else {
+    		this.readballot = messageballot;
+    		GatherMessage gather = new GatherMessage(this.readballot, this.imposeballot, estimate);
+    		getSender().tell(gather, getSelf());
+    	} 
     }
     
     private void propose(Object message) {
@@ -81,7 +128,11 @@ public class Process extends UntypedAbstractActor {
     		return;
     	}
     	
+    	// Copy references and get number of servers
     	this.references = refs;
+    	this.numberOfServers = this.references.size();
+    	this.quorumSize = Math.round((this.numberOfServers / 2 ) + 1) ;
+    	
     	// if parsing was successful initialize states;
     	states = new HashMap<ActorRef, State>();
     	for (ActorRef act : this.references) {
