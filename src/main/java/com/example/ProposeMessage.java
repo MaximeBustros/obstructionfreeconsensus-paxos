@@ -1,9 +1,9 @@
 package com.example;
 
 public class ProposeMessage {
-   int value;
+   Integer value;
 
-   public ProposeMessage(int value) {
+   public ProposeMessage(Integer value) {
        this.value = value;
    }
    

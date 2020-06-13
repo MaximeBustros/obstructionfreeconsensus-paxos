@@ -38,5 +38,8 @@ public class Main {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+		
+		ProposeMessage p = new ProposeMessage(10);
+		references.get(0).tell(p, ActorRef.noSender());
 	}
 }
