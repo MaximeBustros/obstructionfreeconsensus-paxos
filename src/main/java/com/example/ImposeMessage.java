@@ -1,10 +1,10 @@
 package com.example;
 
 public class ImposeMessage {
-    int ballot;
-    int proposal;
+    Integer ballot;
+    Integer proposal;
 
-    public ImposeMsg(int ballot, int proposal) {
+    public ImposeMessage(Integer ballot, Integer proposal) {
         this.ballot = ballot;
         this.proposal = proposal;
     }

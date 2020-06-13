@@ -3,6 +3,7 @@ package com.example;
 import akka.actor.ActorSystem;
 import akka.actor.ActorRef;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 import java.io.IOException;
 public class Main {
@@ -15,7 +16,8 @@ public class Main {
 	private static ArrayList<ActorRef> createServers(ActorSystem system, int n) {
 		ArrayList<ActorRef> references = new ArrayList<ActorRef>();
 		for (int i = 0; i < NUMBER_OF_SERVERS; i++) {
-			final ActorRef a = system.actorOf(Process.createActor());
+			Integer ballot = i - NUMBER_OF_SERVERS;
+			final ActorRef a = system.actorOf(Process.createActor(ballot));
 			references.add(a);
 		}
 		return references;
@@ -26,5 +28,15 @@ public class Main {
 		
 		ArrayList<ActorRef> references = createServers(system, NUMBER_OF_SERVERS);
 		
+		// Send to all actors references to each other
+		for (ActorRef actor : references) {
+			actor.tell(new ReferencesMessage(references), ActorRef.noSender());
+		}
+		
+		try {
+			Thread.sleep(5000);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 }

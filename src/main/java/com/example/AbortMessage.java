@@ -1,8 +1,9 @@
 package com.example;
 
 public class AbortMessage {
-    
-	public AbortMessage(int ballot) {
+    public Integer ballot;
+	
+	public AbortMessage(Integer ballot) {
         this.ballot = ballot;
     }
 	
