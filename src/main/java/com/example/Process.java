@@ -90,7 +90,7 @@ public class Process extends UntypedAbstractActor {
 //	    		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
 	    		readMessage(message);
 	    	} else if (message instanceof AbortMessage) {
-	    		if (this.processState != ProcessState.DECIDED && this.processState != ProcessState.ABORT && !this.isHoldOn) {
+	    		if (this.processState != ProcessState.DECIDED && this.processState != ProcessState.ABORT) {
 //		    		log.info("[" + self().path().name() + "] Aborts");
 		    		
 		    		// When a proposing process receives an abort stop treating subsequent Abort messages;
@@ -133,7 +133,7 @@ public class Process extends UntypedAbstractActor {
 	    	} else if (message instanceof ImposeMessage) {
 	    		impose(message);
 	    	} else if (message instanceof AcknowledgementMessage) {
-	    		if (this.processState == ProcessState.IMPOSING && !this.isHoldOn) {
+	    		if (this.processState == ProcessState.IMPOSING) {
 	    			if (acknowledge(message)) { // if successfully processed acknolegement
 	    		    	this.numberOfAcknowledgementMessage += 1; // count
 	    		    	
@@ -150,8 +150,7 @@ public class Process extends UntypedAbstractActor {
 	    		    		}
 	    		    		this.processState = ProcessState.DECIDED;
 	    		    		// once leader has decided stop proposing;
-//	    		    		this.isHoldOn = true;
-	    		    		log.info("Leader [" + self().path().name() + "] has decided on: " + this.proposal);
+	    		    		log.info("[" + self().path().name() + "] has decided on: " + this.proposal);
 	    		    		try {
 	    		    			launcher.notify();
 	    		    		} catch (Exception e) {
@@ -380,7 +379,7 @@ public class Process extends UntypedAbstractActor {
         @Override
         public void run() {
             while (true) {
-            	if (processState != ProcessState.DECIDED && !isHoldOn && processState != ProcessState.SILENT) {
+            	if (!isHoldOn) {
 //                	Try proposing
                     self().tell(new ProposeMessage(proposal), ActorRef.noSender());
             	}
@@ -388,9 +387,7 @@ public class Process extends UntypedAbstractActor {
             	// if a process receives an abort message then notify
             	try {
             		wait();
-            	} catch (Exception e) {
-//            		e.printStackTrace();
-            	}
+            	} catch (Exception e) {}
             }
         }
 

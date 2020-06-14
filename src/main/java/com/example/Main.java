@@ -12,11 +12,11 @@ import java.util.Random;
 
 public class Main {
 	
-	static final int NUMBER_OF_SERVERS = 10;
-	static final int NUMBER_OF_FAILURES = 4;
-	static final int TIMEOUT_DURATION = 500;
+	static final int NUMBER_OF_SERVERS = 3;
+	static final int NUMBER_OF_FAILURES = 1;
+	static final int TIMEOUT_DURATION = 250;
 	static final int WAIT_DURATION = 60000;
-	static final double CRASH_PROBABILITY = 0.10;
+	static final double CRASH_PROBABILITY = 0.1;
 	
 	private static ArrayList<ActorRef> createServers(ActorSystem system, int n) {
 		ArrayList<ActorRef> references = new ArrayList<ActorRef>();
@@ -91,6 +91,6 @@ public class Main {
 	}
 
 	public static void waitBeforeTerminate() throws InterruptedException {
-		Thread.sleep(20000);
+		Thread.sleep(1000000);
 	}
 }
