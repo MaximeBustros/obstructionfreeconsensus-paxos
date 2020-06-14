@@ -124,12 +124,15 @@ public class Process extends UntypedAbstractActor {
 	    		    		for (ActorRef actor : this.references) {
 	    		    			actor.tell(dm, self());
 	    		    		}
-	    		    		log.info("[" + self().path().name() + "] has decided on: " + this.proposal);
+	    		    		log.info("Leader [" + self().path().name() + "] has decided on: " + this.proposal);
 	    		    	}
 	    			}
 	    		}
 	    	} else if (message instanceof DecideMessage) {
-	    		decide(message);
+	    		if (this.processState != ProcessState.DECIDED) {
+	    			this.processState = ProcessState.DECIDED;
+		    		decide(message);
+	    		}
 	    	}
     	}
     }
@@ -148,9 +151,9 @@ public class Process extends UntypedAbstractActor {
 		for (ActorRef actor : this.references) {
 			actor.tell(dm, self());
 		}
-		// log decided value and return;
-    	log.info("[" + self().path().name() + "] has decided on value: " + dm.proposal);
-    	return;
+//		// log decided value and return;
+//    	log.info("[" + self().path().name() + "] has decided on value: " + dm.proposal);
+//    	return;
     }
     
     private boolean acknowledge(Object message) {
@@ -168,7 +171,7 @@ public class Process extends UntypedAbstractActor {
     private void impose(Object message) {
     	// Parse message
     	ImposeMessage im = null;
-    	log.info("[" + self().path().name() + "] Impose message received from [" + getSender().path().name() + "]");
+//    	log.info("[" + self().path().name() + "] Impose message received from [" + getSender().path().name() + "]");
     	try {
     		im = (ImposeMessage) message;
     	} catch (Exception e) {
@@ -176,9 +179,9 @@ public class Process extends UntypedAbstractActor {
     		return;
     	}
     	
-    	log.info("readballot = " + this.readballot);
-    	log.info("im.ballot = " + im.ballot);
-    	log.info("imposeballot = " + this.imposeballot);
+//    	log.info("readballot = " + this.readballot);
+//    	log.info("im.ballot = " + im.ballot);
+//    	log.info("imposeballot = " + this.imposeballot);
     	
     	if (this.readballot > im.ballot || this.imposeballot > im.ballot) {
     		AbortMessage ab = new AbortMessage(im.ballot);
@@ -199,7 +202,7 @@ public class Process extends UntypedAbstractActor {
     		log.error("Error in parsing GatherMessage");
     		return false;
     	}
-    	log.info("[" + self().path().name() + "] Gather message received from [" + getSender() + "]");
+//    	log.info("[" + self().path().name() + "] Gather message received from [" + getSender() + "]");
     	if (gm.ballot == this.readballot) { // if gather is a response to the actual proposed value
 	    	states.put(getSender(), new State(gm.imposeballot, gm.estimate));
 	    	return true;

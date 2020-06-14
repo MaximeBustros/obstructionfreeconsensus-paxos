@@ -41,5 +41,18 @@ public class Main {
 		
 		ProposeMessage p = new ProposeMessage(10);
 		references.get(0).tell(p, ActorRef.noSender());
+		
+		
+		try {
+			waitBeforeTerminate();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			system.terminate();
+		}
+	}
+
+	public static void waitBeforeTerminate() throws InterruptedException {
+		Thread.sleep(5000);
 	}
 }
