@@ -9,10 +9,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 import java.lang.Math;
+import java.util.Random;
 
 public class Process extends UntypedAbstractActor {
 	private enum ProcessState {
-	    PROPOSING, GATHERING, IMPOSING, ABORTED, FAULTY, DECIDED;
+	    PROPOSING, GATHERING, IMPOSING, DECIDED, SILENT, FAULTPRONE;
 	}
 	
 	// Enable Logging
@@ -23,6 +24,7 @@ public class Process extends UntypedAbstractActor {
 //    private processState
     
     // Process Properties
+    private double crashProbability; // only for faultprone
 	private Integer ballot;
     private Integer proposal;
     private Integer readballot;
@@ -59,12 +61,24 @@ public class Process extends UntypedAbstractActor {
     // Execute actions onReceive Messages of specific type
     @Override
     public void onReceive(Object message) throws Throwable {
-    	// if not faulty then process messages
-    	if (this.processState != ProcessState.FAULTY) {
+    	// if not SILENT then process messages
+    	if (this.processState != ProcessState.SILENT) {
+    		// If processState is faultprone then try to crash with crashProbability
+    		if (this.processState == ProcessState.FAULTPRONE) {
+    			if (tryCrash())
+    				log.info("Process [" + self().path().name() + "] crashed");
+    				return;
+    		}
+    		
 	    	if (message instanceof ReferencesMessage) {
 	    		// Adds References to all processes and Initializes States
 	    		addReferences(message);
-	    	} else if (message instanceof ProposeMessage) {
+	    	} else if (message instanceof CrashMessage) {
+	    		// if receive crash message go into FAULTPRONEMODE
+	    		this.processState = ProcessState.FAULTPRONE;
+	    		log.info("Process [" + self().path().name() + "] is now in FAULTPRONE Mode");
+	    	}
+	    	else if (message instanceof ProposeMessage) {
 	    		// Force a process to begin proposing
 	    		this.processState = ProcessState.PROPOSING;
 	    		propose(message);
@@ -136,6 +150,26 @@ public class Process extends UntypedAbstractActor {
 	    	}
     	}
     }
+    
+    private void receiveCrashMessage(Object message) {
+		CrashMessage cm = null;
+		try {
+			cm = (CrashMessage) message;
+			this.crashProbability = cm.crashProbability;
+		} catch (Exception e) {
+			log.error("Parsing error of CrashMessage");
+		}
+    	this.processState = ProcessState.FAULTPRONE;
+    }
+    
+    private boolean tryCrash() {
+    	if (Math.random() < this.crashProbability) {
+    		this.processState = ProcessState.SILENT;
+    		return true;
+    	}
+    	return false;
+    }
+
     
     private void decide(Object message) {
     	// Parse message
