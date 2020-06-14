@@ -6,14 +6,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Collections;
 import java.io.IOException;
+import java.util.Random;
+//import com.example.ProcessState;
 
 
 public class Main {
 	
-	static final int NUMBER_OF_SERVERS = 20;
-	static final int NUMBER_OF_FAILURES = 9;
-	static final int TIMEOUT_DURATION = 50;
-	static final int WAIT_DURATION = 10000;
+	static final int NUMBER_OF_SERVERS = 10;
+	static final int NUMBER_OF_FAILURES = 4;
+	static final int TIMEOUT_DURATION = 500;
+	static final int WAIT_DURATION = 60000;
 	static final double CRASH_PROBABILITY = 0.10;
 	
 	private static ArrayList<ActorRef> createServers(ActorSystem system, int n) {
@@ -46,16 +48,39 @@ public class Main {
         Collections.shuffle(references);
         CrashMessage cm = new CrashMessage(CRASH_PROBABILITY); // add crashprobability to crashmessage
         for (int i = 0; i < NUMBER_OF_FAILURES; i++ ) {
-        	ActorRef a = references.get(i);
-        	if (a != references.get(0)) {
-        		a.tell(cm, ActorRef.noSender()); // prevent process 1 from being fault prone;
-        	}
+    		references.get(i).tell(cm, ActorRef.noSender());
         }
 
-		ProposeMessage p = new ProposeMessage(10);
-		references.get(0).tell(p, ActorRef.noSender());
-		
-		
+        // For every process, the main method then sends a special
+        // launch message. Once process i receives a launch message, it picks 
+        // an input value, randomly chosen in {0,1} and invokes instances of propose 
+        // operation with this value until a value is decided.
+        
+        // create LaunchMessage
+        LaunchMessage lm = new LaunchMessage();
+        
+        for (ActorRef a : references) {
+        	a.tell(lm, ActorRef.noSender());
+        }
+        
+        try {
+        	Thread.sleep(TIMEOUT_DURATION);
+        } catch (Exception e) {
+        	e.printStackTrace();
+        }
+        
+        //picking a random leader
+        int index = new Random().nextInt(references.size() - NUMBER_OF_FAILURES) + NUMBER_OF_FAILURES;
+
+        ActorRef leader = references.get(index);
+        System.out.println("LEADER IS :" + leader.path().name());
+//        //send the others a hold message
+        for (ActorRef actor : references) {
+            if (!actor.equals(leader)) {
+                actor.tell(new HoldMessage(), ActorRef.noSender());
+            }
+        }
+        
 		try {
 			waitBeforeTerminate();
 		} catch (InterruptedException e) {

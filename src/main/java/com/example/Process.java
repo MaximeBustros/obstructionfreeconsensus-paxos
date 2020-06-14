@@ -10,18 +10,18 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.lang.Math;
 import java.util.Random;
+//import com.example.ProcessState;
 
 public class Process extends UntypedAbstractActor {
-	private enum ProcessState {
-	    PROPOSING, GATHERING, IMPOSING, DECIDED, SILENT, FAULTPRONE;
-	}
-	
 	// Enable Logging
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     
     // Process States
-    private ProcessState processState;
-//    private processState
+    public ProcessState processState;
+    public boolean isHoldOn; 
+    
+    // proposal Launcher
+    private Launcher launcher;
     
     // Process Properties
     private double crashProbability; // only for faultprone
@@ -77,17 +77,29 @@ public class Process extends UntypedAbstractActor {
 	    		// if receive crash message go into FAULTPRONEMODE
 	    		this.processState = ProcessState.FAULTPRONE;
 	    		log.info("Process [" + self().path().name() + "] is now in FAULTPRONE Mode");
-	    	}
-	    	else if (message instanceof ProposeMessage) {
+	    	} else if (message instanceof LaunchMessage) {
+                launcher = new Launcher(new Random().nextInt(2));
+                launcher.start();
+	    	}else if (message instanceof HoldMessage) {
+	    		this.isHoldOn = true;
+	    	} else if (message instanceof ProposeMessage) {
 	    		// Force a process to begin proposing
 	    		this.processState = ProcessState.PROPOSING;
 	    		propose(message);
 	    	} else if (message instanceof ReadMessage) {
-	    		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
+//	    		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
 	    		readMessage(message);
 	    	} else if (message instanceof AbortMessage) {
-	    		if (this.processState != ProcessState.DECIDED) {
-		    		log.info("[" + self().path().name() + "] Aborts");
+	    		if (this.processState != ProcessState.DECIDED && this.processState != ProcessState.ABORT && !this.isHoldOn) {
+//		    		log.info("[" + self().path().name() + "] Aborts");
+		    		
+		    		// When a proposing process receives an abort stop treating subsequent Abort messages;
+		    		this.processState = ProcessState.ABORT;
+		    		// if a thread receives an abort message then make a new proposal
+		    		try {
+		    			launcher.notify();
+		    		} catch (Exception e) {
+		    		}
 	    		}
 	    	} else if (message instanceof GatherMessage) {
 	    		if (this.processState == ProcessState.PROPOSING) {
@@ -112,8 +124,6 @@ public class Process extends UntypedAbstractActor {
 	    				cleanStates();
 	    				
 	    				// Send impose to all
-	    				log.info("Proposal = " + this.proposal);
-	    				log.info("Ballot = " + this.ballot);
 	    				ImposeMessage im = new ImposeMessage(this.ballot, this.proposal);
 	    				for (ActorRef actor : this.references) {
 	    					actor.tell(im, self());
@@ -123,7 +133,7 @@ public class Process extends UntypedAbstractActor {
 	    	} else if (message instanceof ImposeMessage) {
 	    		impose(message);
 	    	} else if (message instanceof AcknowledgementMessage) {
-	    		if (this.processState == ProcessState.IMPOSING) {
+	    		if (this.processState == ProcessState.IMPOSING && !this.isHoldOn) {
 	    			if (acknowledge(message)) { // if successfully processed acknolegement
 	    		    	this.numberOfAcknowledgementMessage += 1; // count
 	    		    	
@@ -138,7 +148,15 @@ public class Process extends UntypedAbstractActor {
 	    		    		for (ActorRef actor : this.references) {
 	    		    			actor.tell(dm, self());
 	    		    		}
+	    		    		this.processState = ProcessState.DECIDED;
+	    		    		// once leader has decided stop proposing;
+//	    		    		this.isHoldOn = true;
 	    		    		log.info("Leader [" + self().path().name() + "] has decided on: " + this.proposal);
+	    		    		try {
+	    		    			launcher.notify();
+	    		    		} catch (Exception e) {
+	    		    			
+	    		    		}
 	    		    	}
 	    			}
 	    		}
@@ -344,9 +362,39 @@ public class Process extends UntypedAbstractActor {
     private void cleanStates() {
     	try {
     		states.replaceAll((key, oldValue) -> new State(null, 0)); 
-        	log.info(self().path().name() + "States successfully cleaned");
+//        	log.info(self().path().name() + "States successfully cleaned");
     	} catch (Exception e) {
     		e.printStackTrace();
     	}
     }
+    
+    
+    class Launcher extends Thread {
+        private int proposal;
+
+        public Launcher(int proposal) {
+            this.proposal = proposal;
+            this.setPriority(Thread.MAX_PRIORITY);
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+            	if (processState != ProcessState.DECIDED && !isHoldOn && processState != ProcessState.SILENT) {
+//                	Try proposing
+                    self().tell(new ProposeMessage(proposal), ActorRef.noSender());
+            	}
+            	// After sending a proposal or not wait
+            	// if a process receives an abort message then notify
+            	try {
+            		wait();
+            	} catch (Exception e) {
+//            		e.printStackTrace();
+            	}
+            }
+        }
+
+    }
 }
+    
+
