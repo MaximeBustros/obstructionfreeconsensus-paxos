@@ -6,14 +6,22 @@ import akka.actor.UntypedAbstractActor;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.ArrayList;
 import java.lang.Math;
 
 public class Process extends UntypedAbstractActor {
+	private enum ProcessState {
+	    PROPOSING, GATHERING, IMPOSING, ABORTED, FAULTY, DECIDED;
+	}
 	
 	// Enable Logging
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-	
+    
+    // Process States
+    private ProcessState processState;
+//    private processState
+    
     // Process Properties
 	private Integer ballot;
     private Integer proposal;
@@ -25,6 +33,7 @@ public class Process extends UntypedAbstractActor {
     private int numberOfServers;
     private int quorumSize;
     private int numberOfGatherMessages;
+    private int numberOfAcknowledgementMessage;
     private HashMap<ActorRef, State> states; 	// State contains estimate and 
     											// estimateballot as public properties;
     
@@ -37,6 +46,7 @@ public class Process extends UntypedAbstractActor {
     	this.estimate = null;
     	this.states = null;
     	this.numberOfGatherMessages = 0;
+    	this.numberOfAcknowledgementMessage = 0;
     }
     
     // Method to create processes
@@ -49,35 +59,186 @@ public class Process extends UntypedAbstractActor {
     // Execute actions onReceive Messages of specific type
     @Override
     public void onReceive(Object message) throws Throwable {
-    	if (message instanceof ReferencesMessage) {
-    		addReferences(message);
-    	} else if (message instanceof ProposeMessage) {
-    		propose(message);
-    	} else if (message instanceof ReadMessage) {
-    		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
-    		readMessage(message);
-    	} else if (message instanceof AbortMessage) {
-    		log.info("[" + self().path().name() + "] Aborts");
-    	} else if (message instanceof GatherMessage) {
-    		gather(message);
+    	// if not faulty then process messages
+    	if (this.processState != ProcessState.FAULTY) {
+	    	if (message instanceof ReferencesMessage) {
+	    		// Adds References to all processes and Initializes States
+	    		addReferences(message);
+	    	} else if (message instanceof ProposeMessage) {
+	    		// Force a process to begin proposing
+	    		this.processState = ProcessState.PROPOSING;
+	    		propose(message);
+	    	} else if (message instanceof ReadMessage) {
+	    		log.info("[" + self().path().name() + "] received READ from [" + getSender().path().name() + "]");
+	    		readMessage(message);
+	    	} else if (message instanceof AbortMessage) {
+	    		if (this.processState != ProcessState.DECIDED) {
+		    		log.info("[" + self().path().name() + "] Aborts");
+	    		}
+	    	} else if (message instanceof GatherMessage) {
+	    		if (this.processState == ProcessState.PROPOSING) {
+	    			if (gather(message)) {
+	    				// if gather message executed correctly then count +1
+	    				this.numberOfGatherMessages += 1;
+	    			}
+	    			// Check if quorum is achieved
+	    			if (this.numberOfGatherMessages >= this.quorumSize) {
+	    				// Change state to impose
+	    				this.processState = ProcessState.IMPOSING;
+	    				this.numberOfGatherMessages = 0;
+	    				
+	    				// get actor with highest estimate ballot if > 0
+	    				if (existsActorWithPositiveEstimateBallot()) {
+	    					ActorRef a = getActorWithHighestEstimateBallot();
+	    					// get estimate
+		    				this.proposal = this.states.get(a).estimate;
+	    				}
+
+	    				// reset states to [null, 0]^n
+	    				cleanStates();
+	    				
+	    				// Send impose to all
+	    				log.info("Proposal = " + this.proposal);
+	    				log.info("Ballot = " + this.ballot);
+	    				ImposeMessage im = new ImposeMessage(this.ballot, this.proposal);
+	    				for (ActorRef actor : this.references) {
+	    					actor.tell(im, self());
+	    				}
+	    			}
+	    		}
+	    	} else if (message instanceof ImposeMessage) {
+	    		impose(message);
+	    	} else if (message instanceof AcknowledgementMessage) {
+	    		if (this.processState == ProcessState.IMPOSING) {
+	    			if (acknowledge(message)) { // if successfully processed acknolegement
+	    		    	this.numberOfAcknowledgementMessage += 1; // count
+	    		    	
+	    		    	// check if quorum is achieved
+	    		    	if (this.numberOfAcknowledgementMessage >= this.quorumSize) {
+	    		    		// change state to decided
+	    		    		this.processState = ProcessState.DECIDED;
+	    		    		this.numberOfAcknowledgementMessage = 0;
+	    		    		
+		    		    	// send decide message to all
+	    		    		DecideMessage dm = new DecideMessage(this.proposal);
+	    		    		for (ActorRef actor : this.references) {
+	    		    			actor.tell(dm, self());
+	    		    		}
+	    		    		log.info("[" + self().path().name() + "] has decided on: " + this.proposal);
+	    		    	}
+	    			}
+	    		}
+	    	} else if (message instanceof DecideMessage) {
+	    		decide(message);
+	    	}
     	}
     }
     
-    private void gather(Object message) {
+    private void decide(Object message) {
+    	// Parse message
+    	DecideMessage dm = null;
+    	try {
+    		dm = (DecideMessage) message;
+    	} catch (Exception e) {
+    		log.error("Error in parsing DecideMessage");
+    		return;
+    	}
+    	
+    	// Send decideMessage to all;
+		for (ActorRef actor : this.references) {
+			actor.tell(dm, self());
+		}
+		// log decided value and return;
+    	log.info("[" + self().path().name() + "] has decided on value: " + dm.proposal);
+    	return;
+    }
+    
+    private boolean acknowledge(Object message) {
+    	// Parse message
+    	AcknowledgementMessage am = null;
+    	try {
+    		am = (AcknowledgementMessage) message;
+    	} catch (Exception e) {
+    		log.error("Error in parsing AcknowledgementMessage");
+    		return false;
+    	}
+    	return true;
+    }
+    
+    private void impose(Object message) {
+    	// Parse message
+    	ImposeMessage im = null;
+    	log.info("[" + self().path().name() + "] Impose message received from [" + getSender().path().name() + "]");
+    	try {
+    		im = (ImposeMessage) message;
+    	} catch (Exception e) {
+    		log.error("Error in parsing ImposeMessage");
+    		return;
+    	}
+    	
+    	log.info("readballot = " + this.readballot);
+    	log.info("im.ballot = " + im.ballot);
+    	log.info("imposeballot = " + this.imposeballot);
+    	
+    	if (this.readballot > im.ballot || this.imposeballot > im.ballot) {
+    		AbortMessage ab = new AbortMessage(im.ballot);
+    		getSender().tell(ab, self());
+    	} else {
+    		this.estimate = im.proposal;
+    		this.imposeballot = im.ballot;
+    		AcknowledgementMessage am = new AcknowledgementMessage(ballot);
+    		getSender().tell(am, self());
+    	}
+    }
+    
+    private boolean gather(Object message) {
     	GatherMessage gm = null;
-    	log.info("[" + self().path().name() + "] Gather message received from [" + getSender() + "]");
     	try {
     		gm = (GatherMessage) message;
     	} catch (Exception e) {
     		log.error("Error in parsing GatherMessage");
+    		return false;
     	}
-    	states.put(getSender(), new State(gm.imposeballot, gm.estimate));
-    	this.numberOfGatherMessages += 1;
-    	if (this.numberOfGatherMessages >= this.quorumSize) {
-    		// Do impose
-    		log.info("[" + self().path().name() + "] quorum reached -> impose value: " + gm.ballot);
-    		this.numberOfGatherMessages = 0;
+    	log.info("[" + self().path().name() + "] Gather message received from [" + getSender() + "]");
+    	if (gm.ballot == this.readballot) { // if gather is a response to the actual proposed value
+	    	states.put(getSender(), new State(gm.imposeballot, gm.estimate));
+	    	return true;
     	}
+    	return false;
+    }
+    
+    private boolean existsActorWithPositiveEstimateBallot() {
+    	for (Map.Entry<ActorRef, State> entry : this.states.entrySet()) {
+		    ActorRef key = (ActorRef) entry.getKey();
+		    State value = (State) entry.getValue();
+		    try {
+			    if (value.estimateBallot > 0) {
+			    	return true;
+			    }
+		    } catch (NullPointerException e) {
+		    	// if null pointer just keep going
+		    }
+		}
+    	return false;
+    }
+    
+    private ActorRef getActorWithHighestEstimateBallot() {
+    	ActorRef max = self();
+		Integer maxEst = this.states.get(self()).estimateBallot;
+		// select states[pk]=[est,estballot] > 0 with highest estballot 
+		for (Map.Entry<ActorRef, State> entry : this.states.entrySet()) {
+		    ActorRef key = (ActorRef) entry.getKey();
+		    State value = (State) entry.getValue();
+		    try {
+			    if (value.estimateBallot > maxEst) {
+			    	maxEst = value.estimateBallot;
+			    	max = key;
+			    }
+		    } catch (NullPointerException e) {
+		    	// if null pointer just keep going
+		    }
+		}
+		return max;
     }
     
     private void readMessage(Object message) {
@@ -90,6 +251,7 @@ public class Process extends UntypedAbstractActor {
     		log.error("Parsing Error: readMessage");
     		return;
     	}
+    	
     	if (this.readballot > messageballot || this.imposeballot > messageballot) {
     		AbortMessage abort = new AbortMessage(messageballot);
     		getSender().tell(abort, getSelf());
@@ -101,20 +263,21 @@ public class Process extends UntypedAbstractActor {
     }
     
     private void propose(Object message) {
-    	Integer value = null;
+    	ProposeMessage m = null;
     	try {
     		// parse message
-    		ProposeMessage m = (ProposeMessage) message;
-    		value = m.value;
-    		ReadMessage rm = new ReadMessage(value);
-    		for (ActorRef actor : this.references) {
-    			actor.tell(rm, self());
-    		}
+    		m = (ProposeMessage) message;
     	} catch (Exception e) {
     		log.error("ProposeError");
-    		return;
     	}
-    	
+		this.proposal = m.value;
+		this.ballot = this.ballot + this.numberOfServers;
+		cleanStates();
+		
+		ReadMessage rm = new ReadMessage(this.ballot);
+		for (ActorRef actor : this.references) {
+			actor.tell(rm, self());
+		}
     }
     
     private void addReferences(Object message) {

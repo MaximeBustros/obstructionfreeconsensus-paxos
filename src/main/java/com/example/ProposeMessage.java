@@ -6,5 +6,4 @@ public class ProposeMessage {
    public ProposeMessage(Integer value) {
        this.value = value;
    }
-   
 }
